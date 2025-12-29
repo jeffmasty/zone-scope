@@ -15,11 +15,29 @@
   <name>zone-scope</name>
 
   <dependencies>
-  <dependency>
+  
+    <dependency>
       <groupId>net.judahzone</groupId>
-      <artifactId>zone-core</artifactId>
+      <artifactId>zone-core</artifactId> 
       <version>1.0</version>
-  </dependency>
+    </dependency>
+    <dependency>
+      <groupId>net.judahzone</groupId>
+      <artifactId>zone-gui</artifactId> 
+      <version>0.0.1-SNAPSHOT</version>
+    </dependency>
+  
+    
+	<!-- Tarsos Audio Library -->
+    <dependency>
+      <groupId>be.tarsos.dsp</groupId>
+      <artifactId>core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>be.tarsos.dsp</groupId>
+      <artifactId>jvm</artifactId>
+    </dependency>
+  
   </dependencies>
   
   <build>
