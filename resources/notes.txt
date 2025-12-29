@@ -1,0 +1,24 @@
+Manifest.mf:
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-jar-plugin</artifactId>
+  <version>3.4.2</version>
+  <configuration>
+    <archive>
+      <manifest>
+        <!-- optional: set main class if this module is runnable -->
+        <!-- <mainClass>net.judah.YourMainClass</mainClass> -->
+        <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+        <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+      </manifest>
+      <manifestEntries>
+        <Implementation-Title>${project.name}</Implementation-Title>
+        <Implementation-Vendor>net.judahzone</Implementation-Vendor>
+        <Implementation-Version>${project.version}</Implementation-Version>
+        <Built-By>${user.name}</Built-By>
+        <Built-Jdk>${maven.compiler.source}</Built-Jdk>
+        <Created-By>Maven ${maven.version}</Created-By>
+      </manifestEntries>
+    </archive>
+  </configuration>
+</plugin>
