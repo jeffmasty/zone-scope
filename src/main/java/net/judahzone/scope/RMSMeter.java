@@ -1,15 +1,14 @@
 package net.judahzone.scope;
 
+import static judahzone.util.AudioMetrics.*;
+
 import java.awt.Dimension;
 
+import judahzone.api.Transform;
+import judahzone.util.AudioMetrics;
 import judahzone.util.Rainbow;
 
 public class RMSMeter extends TimeWidget {
-
-	public static final float LIVE_FACTOR = 8; // TODO live audio ~8x weaker than recorded audio?
-	public static final int Y_FACTOR = 550; // boost RMS into pixel range
-	public static final int INTENSITY = 200; // scale peaks into pixels
-	public static final int I_SHIFT = 37; // shift intensity off blue
 
 	private float iScale = 0.5f;
 	private float yScale = 0.5f;
@@ -23,7 +22,7 @@ public class RMSMeter extends TimeWidget {
 		updateFactors();
 	}
 
-	private void drawX(int xOnScreen, RMS data, int cellWidth, boolean live) {
+	private void drawX(int xOnScreen, AudioMetrics.RMS data, int cellWidth, boolean live) {
 
 		// compute pixel height from RMS and clamp to [0..baseline]
 		int height = (int) (data.rms() * rmsFactor * (live ? LIVE_FACTOR : 1));

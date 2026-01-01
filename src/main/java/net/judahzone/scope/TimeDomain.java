@@ -16,10 +16,13 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JSlider;
 
-import net.judahzone.gui.Gui;
+import judahzone.api.Played;
+import judahzone.api.Transform;
+import judahzone.gui.Gui;
+import judahzone.util.Recording;
+import judahzone.util.Threads;
 
-
-public class TimeDomain extends JPanel implements Gui.Mouser {
+public class TimeDomain extends JPanel implements Gui.Mouser, Played {
 
     private enum DragMode { OFF, DRAG, IGNORE }
 
@@ -36,8 +39,9 @@ public class TimeDomain extends JPanel implements Gui.Mouser {
     /** 50/50 line lives in the draw/head region. */
     static final int HEIGHT_5050     = HEIGHT_DRAWHEAD - (HEIGHT_RMS / 2);
 
-    static Stroke dashed = new BasicStroke(3, BasicStroke.CAP_BUTT, BasicStroke.JOIN_BEVEL,
-                                           0, new float[]{9}, 0);
+    static Stroke dashed =  new BasicStroke( 2f,
+            BasicStroke.CAP_BUTT, BasicStroke.JOIN_BEVEL,
+            0f, new float[]{6f, 4f}, 0f ); // dash pattern: 6px on, 4px off
 
     static final Color HEAD  = Color.DARK_GRAY;
     static final Color GUAGE = Color.DARK_GRAY;
@@ -46,6 +50,8 @@ public class TimeDomain extends JPanel implements Gui.Mouser {
     private final Transform[] db;
     private Spectrogram spectro;
     private RMSMeter rms;
+    /** Shared Playa reference (for FILE mode), owned by JudahScope */
+    private Playa playa;
 
     /** Per-instance controls (RMS gain, zoom). */
     private final JPanel controls = new JPanel();
@@ -74,17 +80,21 @@ public class TimeDomain extends JPanel implements Gui.Mouser {
 
     // Live
     TimeDomain(TimeDomain source, int width) {
-        this(source.scope, width, false, source.db);
+        this(source.scope, width, false, source.db, null);
         live = true;
     }
 
     // Paused
     TimeDomain(JudahScope view, int width) {
-        this(view, width, true, new Transform[width / 2]);
+        this(view, width, true, new Transform[width / 2], null);
     }
 
-    // File (or zoomable paused)
-    TimeDomain(JudahScope view, int width, boolean zoomable, Transform[] db) {
+    // File / zoomable
+    TimeDomain(JudahScope view, int width, Transform[] db, Recording tape) {
+        this(view, width, true, db, tape);
+    }
+
+    private TimeDomain(JudahScope view, int width, boolean zoomable, Transform[] db, Recording tape) {
         this.scope = view;
         this.db = db;
         this.zoomable = zoomable;
@@ -101,6 +111,13 @@ public class TimeDomain extends JPanel implements Gui.Mouser {
 
     public JPanel getControls() {
         return controls;
+    }
+
+    /** JudahScope wires the shared Playa into this TimeDomain when in FILE mode. */
+    public void setPlaya(Playa playa) {
+        this.playa = playa;
+        // Controls already built; if needed, you can call this before initControls
+        // or rebuild controls; for now, Playa is not embedded into TimeDomain controls.
     }
 
     private void initControls() {
@@ -121,6 +138,7 @@ public class TimeDomain extends JPanel implements Gui.Mouser {
             controls.add(new JLabel(" Zoom "));
             controls.add(Gui.resize(zoomSlider, JudahScope.SLIDER));
         }
+
         controls.add(Box.createHorizontalStrut(8));
     }
 
@@ -174,6 +192,10 @@ public class TimeDomain extends JPanel implements Gui.Mouser {
         int idx = startIndex + relativeIndex;
         idx = Math.max(startIndex, Math.min(endIndex, idx));
         positionIndex = idx;
+        // For FILE mode, use JudahScope/Playa to seek; live mode just moves caret
+        if (playa != null) {
+            Threads.execute(() -> scope.seekToIndex(positionIndex));
+        }
         repaint();
     }
 
@@ -230,6 +252,7 @@ public class TimeDomain extends JPanel implements Gui.Mouser {
 
         Graphics2D g2 = (Graphics2D) g;
         Stroke reset = g2.getStroke();
+        g.setColor(GUAGE);
         g2.setStroke(dashed);
         g.drawLine(0, HEIGHT_5050, getWidth(), HEIGHT_5050);
         g2.setStroke(reset);
@@ -246,8 +269,8 @@ public class TimeDomain extends JPanel implements Gui.Mouser {
     private void drawFrameLabels(Graphics g) {
         java.awt.FontMetrics fm = g.getFontMetrics();
 
-        int clearY = HEIGHT_DRAWHEAD;      // 192
-        int clearH = HEIGHT_LABELS;        // 20
+        int clearY = HEIGHT_DRAWHEAD;
+        int clearH = HEIGHT_LABELS;
         g.clearRect(0, clearY, getWidth(), clearH);
 
         int maxSize = db.length;
@@ -278,8 +301,8 @@ public class TimeDomain extends JPanel implements Gui.Mouser {
 
     void resize(int newWidth) {
         if (rms != null) {
-        	rms.close();
-        	spectro.close();
+            rms.close();
+            spectro.close();
         }
 
         this.w = newWidth;
@@ -470,5 +493,15 @@ public class TimeDomain extends JPanel implements Gui.Mouser {
                 newStart = 0;
         }
         setRange(newStart, newEnd);
+    }
+
+    /**Allows external players to move the visual head/caret. */
+    @Override
+    public void setHeadIndex(int idx) {
+        if (db == null || db.length == 0) return;
+        int clamped = Math.max(0, Math.min(db.length - 1, idx));
+        positionIndex = clamped;
+        scope.click(db[positionIndex]);
+        repaint();
     }
 }

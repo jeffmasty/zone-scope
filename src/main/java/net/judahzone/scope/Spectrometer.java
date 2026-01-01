@@ -20,11 +20,13 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JSlider;
 import javax.swing.JToggleButton;
+import javax.swing.SwingConstants;
 
+import judahzone.api.Transform;
+import judahzone.gui.Floating;
+import judahzone.gui.Gui;
 import judahzone.util.Constants;
 import judahzone.util.RTLogger;
-import net.judahzone.gui.Floating;
-import net.judahzone.gui.Gui;
 
 /** Spectrometer - FFT-based bar display with:
  *  - log-horizontal frequency axis
@@ -64,7 +66,7 @@ public class Spectrometer extends JPanel implements Closeable, Floating, Gui.Mou
     private final JToggleButton live;
     private final JSlider dampen = new JSlider(0, 100, 50); // sensitivity: 0 (strict) .. 100 (show many)
 	private final JSlider ySlider= new JSlider(1, 100, 50);  // height multiplier control (logarithmic)
-    private final JCheckBox tilt = new JCheckBox("Tilt", false);
+    private final JCheckBox tilt = new JCheckBox("  Tilt", false);
 	private int yScale = 50;
     private int sensitivity = 50;
 
@@ -75,8 +77,8 @@ public class Spectrometer extends JPanel implements Closeable, Floating, Gui.Mou
         resized(sz.width, sz.height);
         addMouseListener(this);
         addMouseWheelListener(this);
+        tilt.setHorizontalTextPosition(SwingConstants.LEFT);
         tilt.setToolTipText("Compensate higher frequencies");
-
     }
 
 	public JComponent getControls() {
