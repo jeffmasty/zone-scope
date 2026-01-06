@@ -2,7 +2,7 @@
 
 **Real-time audio visualization toolkit for Java / Swing**
 
-A lightweight, low-latency spectroscope for the [JudahZone](https://github.com/jeffmasty/JudahZone) project. Visualizes audio files and live audio (JavaSound/Jack) with spectrogram, spectrometer, RMS meters and caret/seek playback. Built with minimal allocations for continuous real-time rendering.
+A lightweight, low-latency Java / Swing spectroscope. Visualizes audio files and live audio (JavaSound/Jack) with a spectrogram, spectrometer, RMS meter as well as caret/seek playback. Built with minimal allocations for continuous real-time rendering for the [JudahZone](https://github.com/jeffmasty/JudahZone) project.
 
 ---
 
@@ -23,6 +23,7 @@ A lightweight, low-latency spectroscope for the [JudahZone](https://github.com/j
 ### Prerequisites
 - **Java 21** or newer (tested on OpenJDK 21).
 - **Maven 3.8+** (build tool).
+- **Memory to store uncompressed audio + spectra if importing large files.
 
 ### Clone and Build
 
@@ -66,7 +67,7 @@ The app opens a Swing window with JavaSound input controls, live spectrogram, RM
 - Results (`Transform` objects containing amplitudes and RMS) are delivered to the UI via a `Consumer<T>` callback.
 - UI components (`Spectrogram`, `Spectrometer`, `RMSMeter`) repaint using the latest `Transform` data.
 
-**Coordinate system** (logarithmic frequency axis):
+**Spectrometer**:
 - X-axis: log-scale frequency (min 20 Hz, max Nyquist/2), consistent with human perception.
 - Y-axis: amplitude/power mapped to dB, normalized to color intensity or bar height.
 - Sensitivity and tilt controls adjust the visible dynamic range and frequency response.
@@ -76,9 +77,9 @@ The app opens a Swing window with JavaSound input controls, live spectrogram, RM
 ## Key Classes
 
 - **`JudahScope`** – main view/controller, mode switching (live/stopped/file), wiring between components.
-- **`TimeDomain`** – per-mode container; handles zoom, caret, mouse interaction and delegates to visualization components.
+- **`Spectrometer`** – adjustable real-time frequency spectrum display (55 Hz – 14 kHz).
+- **`TimeDomain`** – handles zoom, caret, mouse interaction and delegates to visualization components.
 - **`Spectrogram`** – rolling spectrogram (frequency vs. time heatmap).
-- **`Spectrometer`** – real-time frequency spectrum display (55 Hz – 14 kHz adjustable).
 - **`RMSMeter`** – peak/RMS level meter with decay.
 - **`BoomBox`** – playback UI wrapper (play/pause/seek) that delegates low-level `PlayAudio` player.
 - **`Analysis<T>`** – base class for "copy & analyze" offline effects; standardizes snapshot/FFT workflow.
@@ -91,7 +92,7 @@ The app opens a Swing window with JavaSound input controls, live spectrogram, RM
 Managed by the parent `pom.xml`:
 
 - **`zone-core`** – shared utilities (RT logger, constants, memory pools).
-- **`zone-fx`** – audio effects and analysis base classes.
+- **`zone-fx`** – analysis base classes.
 - **`zone-gui`** – GUI helpers and widgets.
 - **`zone-javax`** – JavaSound input/output helpers (`JavaxIn`, `JavaxOut`).
 
@@ -118,15 +119,6 @@ When building inside `meta-zone`, all versions/repos are inherited from the pare
 
 ---
 
-## Contributing
-
-This module is part of the [meta-zone](https://github.com/jeffmasty/meta-zone) aggregator. Contributions welcome:
-
-- Open issues for bugs or feature requests.
-- Submit PRs against the `meta-zone` aggregator (or individual module repos if forked).
-
----
-
 ## Credits
 
 - **FFT / tuner**: [TarsosDSP](https://github.com/JorenSix/TarsosDSP) by Joren Six.
@@ -135,16 +127,12 @@ This module is part of the [meta-zone](https://github.com/jeffmasty/meta-zone) a
 
 ---
 
-## License
-
-GPL3
-
----
-
 ## Links
 
 - Main project: [JudahZone](https://github.com/jeffmasty/JudahZone)
 - Aggregator: [meta-zone](https://github.com/jeffmasty/meta-zone)
+- JavaSound module: [zone-javax](https://github.com/jeffmasty/zone-javax)
+- Analysis Plugin(+DSP): [zone-fx](https://github.com/jeffmasty/zone-fx)
 - TarsosDSP: [https://github.com/JorenSix/TarsosDSP](https://github.com/JorenSix/TarsosDSP)
 - JACK Audio: [https://jackaudio.org/](https://jackaudio.org/)
 

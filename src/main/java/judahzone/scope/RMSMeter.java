@@ -1,4 +1,4 @@
-package net.judahzone.scope;
+package judahzone.scope;
 
 import static judahzone.util.AudioMetrics.INTENSITY;
 import static judahzone.util.AudioMetrics.I_SHIFT;

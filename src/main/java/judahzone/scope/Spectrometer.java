@@ -1,4 +1,4 @@
-package net.judahzone.scope;
+package judahzone.scope;
 
 import static judahzone.util.WavConstants.FFT_SIZE;
 

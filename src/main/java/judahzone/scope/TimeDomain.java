@@ -1,4 +1,4 @@
-package net.judahzone.scope;
+package judahzone.scope;
 
 import java.awt.BasicStroke;
 import java.awt.Color;

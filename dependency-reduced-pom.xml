@@ -17,7 +17,7 @@
         <configuration>
           <archive>
             <manifest>
-              <mainClass>net.judahzone.scope.JudahScope</mainClass>
+              <mainClass>judahzone.scope.JudahScope</mainClass>
             </manifest>
           </archive>
         </configuration>
@@ -36,7 +36,7 @@
               <shadedClassifierName>shaded</shadedClassifierName>
               <transformers>
                 <transformer>
-                  <mainClass>net.judahzone.scope.JudahScope</mainClass>
+                  <mainClass>judahzone.scope.JudahScope</mainClass>
                 </transformer>
               </transformers>
             </configuration>
