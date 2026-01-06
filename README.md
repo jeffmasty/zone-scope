@@ -1,2 +1,151 @@
 # zone-scope
-A Java / Swing Spectroscope
+
+**Real-time audio visualization toolkit for Java / Swing**
+
+A lightweight, low-latency spectroscope for the [JudahZone](https://github.com/jeffmasty/JudahZone) project. Visualizes audio files and live audio (JavaSound/Jack) with spectrogram, spectrometer, RMS meters and caret/seek playback. Built with minimal allocations for continuous real-time rendering.
+
+---
+
+## Features
+
+- **Live audio capture** – JACK or JavaSound (fallback) input with rolling RMS and spectrogram displays.
+- **File mode** – load audio files, precompute FFT transforms, inspect spectrum with a draggable caret/seek control.
+- **Spectrometer** – adjustable frequency response (20 Hz – 14 kHz), sensitivity and tilt controls, logarithmic frequency axis.
+- **Zoomable time-domain view** – pan/zoom large recordings with mouse wheel and drag.
+- **Shared playback UI** – single `BoomBox` control delegates to low-level `PlayAudio` player for file playback/seeking.
+- **Standalone runnable** – works outside JudahZone with zero configuration (JavaSound mode).
+- **Zero-copy RT path** – allocation-free audio callbacks suitable for continuous visualization.
+
+---
+
+## Quick Start (Standalone Mode)
+
+### Prerequisites
+- **Java 21** or newer (tested on OpenJDK 21).
+- **Maven 3.8+** (build tool).
+
+### Clone and Build
+
+**Recommended**: clone the parent aggregator (builds all modules in one step):
+
+	git clone https://github.com/jeffmasty/meta-zone.git
+	cd meta-zone
+
+Build zone-scope:
+
+	mvn -pl zone-scope -am clean package
+
+Alternative: build all modules: 
+
+	mvn clean package
+
+Note: If you cd into zone-scope and run mvn package directly, Maven expects the parent pom.xml at the relative path defined in the module's pom.xml. Building from the aggregator root is simpler.
+
+### Run
+
+After building, launch the standalone demo:
+
+	java -jar zone-scope/target/zone-scope-0.3-SNAPSHOT.jar
+
+Or use the shaded (fat) JAR:
+
+	java -jar zone-scope/target/zone-scope-0.3-SNAPSHOT-shaded.jar
+
+The app opens a Swing window with JavaSound input controls, live spectrogram, RMS meter and spectrometer. 
+
+---
+
+## How It Works
+
+**Real-time path** (zero-allocation):
+- Audio callbacks (`process(float[] left, float[] right)`) snapshot data into a ring buffer (`Recording`).
+- When enough samples accumulate (configurable buffer size), the `Analysis<T>` base class submits an off-thread FFT job to an executor.
+- Subclass `Transformer` performs windowed FFT (Hamming window via TarsosDSP) and computes modulus + RMS metrics.
+- Results (`Transform` objects containing amplitudes and RMS) are delivered to the UI via a `Consumer<T>` callback.
+- UI components (`Spectrogram`, `Spectrometer`, `RMSMeter`) repaint using the latest `Transform` data.
+
+**Coordinate system** (logarithmic frequency axis):
+- X-axis: log-scale frequency (min 20 Hz, max Nyquist/2), consistent with human perception.
+- Y-axis: amplitude/power mapped to dB, normalized to color intensity or bar height.
+- Sensitivity and tilt controls adjust the visible dynamic range and frequency response.
+
+---
+
+## Key Classes
+
+- **`JudahScope`** – main view/controller, mode switching (live/stopped/file), wiring between components.
+- **`TimeDomain`** – per-mode container; handles zoom, caret, mouse interaction and delegates to visualization components.
+- **`Spectrogram`** – rolling spectrogram (frequency vs. time heatmap).
+- **`Spectrometer`** – real-time frequency spectrum display (55 Hz – 14 kHz adjustable).
+- **`RMSMeter`** – peak/RMS level meter with decay.
+- **`BoomBox`** – playback UI wrapper (play/pause/seek) that delegates low-level `PlayAudio` player.
+- **`Analysis<T>`** – base class for "copy & analyze" offline effects; standardizes snapshot/FFT workflow.
+- **`Transformer`** – Analysis implementation that produces FFT `Transform` objects (amplitudes + RMS).
+
+---
+
+## Dependencies
+
+Managed by the parent `pom.xml`:
+
+- **`zone-core`** – shared utilities (RT logger, constants, memory pools).
+- **`zone-fx`** – audio effects and analysis base classes.
+- **`zone-gui`** – GUI helpers and widgets.
+- **`zone-javax`** – JavaSound input/output helpers (`JavaxIn`, `JavaxOut`).
+- **Lombok** – annotation processing (compile-time, minimal usage).
+
+When building inside `meta-zone`, all versions/repos are inherited from the parent.
+
+---
+
+## Runtime Notes (Linux)
+
+- **JACK support** requires a running JACK server (`jackd` or `jackd2`) and native JACK libraries. If JACK is unavailable, the app uses JavaSound (lower latency and fewer features).
+- **File playback** works out-of-the-box via JavaSound; no JACK required.
+- For full JudahZone integration (MIDI routing, FluidSynth, etc.), see the main [JudahZone README](https://github.com/jeffmasty/JudahZone).
+
+---
+
+## Screenshots
+
+![zone-scope logo](/screen1.png)
+
+![zone-scope logo2](/screen2.png)
+
+---
+
+## Contributing
+
+This module is part of the [meta-zone](https://github.com/jeffmasty/meta-zone) aggregator. Contributions welcome:
+
+- Open issues for bugs or feature requests.
+- Submit PRs against the `meta-zone` aggregator (or individual module repos if forked).
+
+---
+
+## Credits
+
+- **FFT / tuner**: [TarsosDSP](https://github.com/JorenSix/TarsosDSP) by Joren Six.
+- **Spectrometer/Spectograph ideas**: adapted from Tarsos. 
+- **JACK bindings**: [JNAJack](https://github.com/jaudiolibs/jnajack) (via `zone-jnajack` module).
+
+---
+
+## License
+
+GPL3
+
+---
+
+## Links
+
+- Main project: [JudahZone](https://github.com/jeffmasty/JudahZone)
+- Aggregator: [meta-zone](https://github.com/jeffmasty/meta-zone)
+- TarsosDSP: [https://github.com/JorenSix/TarsosDSP](https://github.com/JorenSix/TarsosDSP)
+- JACK Audio: [https://jackaudio.org/](https://jackaudio.org/)
+
+---
+
+**Enjoy visualizing your audio!** 🎵📊
+
+---

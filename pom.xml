@@ -5,7 +5,7 @@
   <parent>
     <groupId>net.judahzone</groupId>
     <artifactId>meta-zone</artifactId>
-    <version>0.2-SNAPSHOT</version>
+    <version>0.3-SNAPSHOT</version>
     <relativePath>../meta-zone/pom.xml</relativePath>
   </parent>
 
@@ -21,6 +21,10 @@
     </dependency>
     <dependency>
       <groupId>net.judahzone</groupId>
+      <artifactId>zone-fx</artifactId> 
+    </dependency>
+    <dependency>
+      <groupId>net.judahzone</groupId>
       <artifactId>zone-gui</artifactId> 
     </dependency>
     <dependency>
@@ -28,16 +32,26 @@
       <artifactId>zone-javax</artifactId> 
     </dependency>
 
-  
-	<!-- Tarsos Audio Library -->
     <dependency>
-      <groupId>be.tarsos.dsp</groupId>
-      <artifactId>core</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
+	  <version>${log4j2.version}</version>
     </dependency>
     <dependency>
-      <groupId>be.tarsos.dsp</groupId>
-      <artifactId>jvm</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-api</artifactId>
+  	  <version>${log4j2.version}</version>
     </dependency>
+
+<!-- Tarsos Audio Library --> <!--TODO windowing PR -->
+<!--    <dependency>-->
+<!--      <groupId>be.tarsos.dsp</groupId>-->
+<!--      <artifactId>core</artifactId>-->
+<!--    </dependency>-->
+<!--    <dependency>-->
+<!--      <groupId>be.tarsos.dsp</groupId>-->
+<!--      <artifactId>jvm</artifactId>-->
+<!--    </dependency>-->
   
   </dependencies>
   
@@ -59,7 +73,7 @@
       </plugin>
 
 
-     <plugin>
+     <plugin> <!-- shaded jar in target -->
       <groupId>org.apache.maven.plugins</groupId>
       <artifactId>maven-shade-plugin</artifactId>
       <version>3.6.0</version>
@@ -70,11 +84,10 @@
             <goal>shade</goal>
           </goals>
           <configuration>
-            <!-- Keep original JudahZone-0.1.jar -->
+            <!-- Keep shaded VER-0.x.jar -->
             <shadedArtifactAttached>true</shadedArtifactAttached>
-            <!-- Versioned fat jar: JudahZone-0.1-shaded.jar -->
             <shadedClassifierName>shaded</shadedClassifierName>
-            <transformers>
+            <transformers> <!-- Manifest/main -->
               <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                 <mainClass>net.judahzone.scope.JudahScope</mainClass>
               </transformer>
@@ -83,8 +96,37 @@
         </execution>
       </executions>
     </plugin>
-
-      </plugins>
+	<plugin> <!-- shaded jar to project root as zone-scope-full.jar -->
+	  <groupId>org.apache.maven.plugins</groupId>
+	  <artifactId>maven-antrun-plugin</artifactId>
+	  <version>3.1.0</version>
+	  <executions>
+	    <execution>
+	      <id>copy-shaded-to-root</id>
+	      <phase>package</phase>
+	      <goals><goal>run</goal></goals>
+	      <configuration>
+	        <target>
+	          <copy file="${project.build.directory}/${project.build.finalName}-shaded.jar"
+	                tofile="${project.basedir}/zone-scope-full.jar"
+	                overwrite="true"/>
+	        </target>
+	      </configuration>
+	    </execution>
+	
+	    <execution> <!-- cleanup project root jar -->
+	      <id>delete-copied-jar-on-clean</id>
+	      <phase>clean</phase>
+	      <goals><goal>run</goal></goals>
+	      <configuration>
+	        <target>
+	          <delete file="${project.basedir}/zone-scope-full.jar" failonerror="false"/>
+	        </target>
+	      </configuration>
+	    </execution>
+	  </executions>
+	</plugin>
+   </plugins>
  </build>
   
 </project>

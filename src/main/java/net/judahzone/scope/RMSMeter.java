@@ -1,12 +1,15 @@
 package net.judahzone.scope;
 
-import static judahzone.util.AudioMetrics.*;
+import static judahzone.util.AudioMetrics.INTENSITY;
+import static judahzone.util.AudioMetrics.I_SHIFT;
+import static judahzone.util.AudioMetrics.Y_FACTOR;
 
 import java.awt.Dimension;
 
 import judahzone.api.Transform;
 import judahzone.util.AudioMetrics;
 import judahzone.util.Rainbow;
+import judahzone.util.WavConstants;
 
 public class RMSMeter extends TimeWidget {
 
@@ -16,28 +19,25 @@ public class RMSMeter extends TimeWidget {
 	private float peaksFactor = 1f;
 	private float smoothedPeak = 0f;
 	private static final float PEAK_SMOOTH = 0.15f; // 0 = instant, 1 = frozen
+	private final JudahScope scope;
 
-	public RMSMeter(Dimension size, Transform[] data) {
+
+	public RMSMeter(Dimension size, Transform[] data, JudahScope scope) {
 		super(size, data);
+		this.scope = scope;
 		updateFactors();
 	}
 
 	private void drawX(int xOnScreen, AudioMetrics.RMS data, int cellWidth, boolean live) {
 
 		// compute pixel height from RMS and clamp to [0..baseline]
-		int height = (int) (data.rms() * rmsFactor * (live ? LIVE_FACTOR : 1));
-		if (height < 0)
-			height = 0;
-		if (height > h)
-			height = h;
-
+		int height = (int) (data.rms() * rmsFactor * (live ? WavConstants.LIVE_FACTOR : WavConstants.TO_LINE));
+		height = Math.max(0, Math.min(h, height));
 		int y = h - height;
 
 		// Color index driven by smoothed peak value
 		smoothedPeak = smoothedPeak * (1.0f - PEAK_SMOOTH) + data.peak() * PEAK_SMOOTH;
-		int colorIndex = I_SHIFT + Math.round(smoothedPeak * peaksFactor * (live ? LIVE_FACTOR : 1));
-		if (colorIndex < 0)
-			colorIndex = 0; // defensive
+		int colorIndex = I_SHIFT + Math.round(smoothedPeak * peaksFactor * (live ? WavConstants.LIVE_FACTOR : WavConstants.TO_LINE));
 
 		// draw the RMS-driven bar using the rainbow color (color intensity is independent of height)
 		g2d.setColor(Rainbow.get(colorIndex));
@@ -75,7 +75,7 @@ public class RMSMeter extends TimeWidget {
 			int xOnScreen = Math.round(i * unit);
 			int nextX = Math.round((i + 1) * unit);
 			int cellWidth = Math.max(1, nextX - xOnScreen);
-			drawX(xOnScreen, t.rms(), cellWidth, false);
+			drawX(xOnScreen, t.rms(), cellWidth, scope.getMode() != JudahScope.Mode.FILE);
 		}
 		drawBorder();
 	}

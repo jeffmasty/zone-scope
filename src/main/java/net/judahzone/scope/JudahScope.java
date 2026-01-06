@@ -1,6 +1,6 @@
 package net.judahzone.scope;
 
-import static judahzone.util.WavConstants.*;
+import static judahzone.util.WavConstants.FFT_SIZE;
 
 import java.awt.Component;
 import java.awt.Dimension;
@@ -20,363 +20,378 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JToggleButton;
+import javax.swing.SwingUtilities;
 
-import be.tarsos.dsp.util.fft.HammingWindow;
-import judahzone.api.Live;
+import judahzone.api.Asset;
+import judahzone.api.PlayAudio;
+import judahzone.api.Registrar;
 import judahzone.api.Transform;
+import judahzone.fx.analysis.Transformer;
 import judahzone.gui.Floating;
 import judahzone.gui.Gui;
 import judahzone.gui.Nimbus;
 import judahzone.javax.JavaxIn;
 import judahzone.javax.JavaxOut;
-import judahzone.util.AudioMetrics;
-import judahzone.util.AudioMetrics.RMS;
 import judahzone.util.Constants;
-import judahzone.util.FFZ;
 import judahzone.util.Folders;
-import judahzone.util.FromDisk;
 import judahzone.util.MP3;
+import judahzone.util.Memory;
 import judahzone.util.RTLogger;
 import judahzone.util.Recording;
 import judahzone.util.Services;
 import judahzone.util.Threads;
+import judahzone.util.WavConstants;
+import judahzone.widgets.BoomBox;
 
 /** Provides a Spectrometer, a Spectrogram and RMSmeter, listening to mixer's selected channels
  * (on a circular 20 sec buffer) or analyze an audio file from disk */
-public class JudahScope extends JPanel implements Live, Floating, Closeable {
+public class JudahScope extends JPanel implements Floating, Closeable {
 
-    public static enum Mode{ LIVE_ROLLING, LIVE_STOPPED, FILE }
+	public static enum Mode{ LIVE_ROLLING, LIVE_STOPPED, FILE }
 
-    /** our transformer */
-    public static final FFZ fft = new FFZ(FFT_SIZE, new HammingWindow());
-    static final int JACK_BUFFER = Constants.bufSize();
+	private static final int MENU_HEIGHT = 32;
+	private static final int VERTICAL_SPACING = 26;
+	public static final Dimension SLIDER = new Dimension(60, 24);
+	public static final Dimension FEEDBACK = new Dimension(190, MENU_HEIGHT);
 
-    static final int S_RATE = Constants.sampleRate();
-    private static final int MENU_HEIGHT = 32;
-    private static final int VERTICAL_SPACING = 26;
-    public static final Dimension SLIDER = new Dimension(60, 24);
-    public static final Dimension FEEDBACK = new Dimension(190, MENU_HEIGHT);
+	private final boolean STANDALONE;
+	private int w;
+	private Mode mode = Mode.LIVE_STOPPED;
+	private Spectrometer spectrum;
+	private TimeDomain timeDomain;
 
-    private boolean STANDALONE; // new function (mutable)
-    private int w;
-    private Mode status = Mode.LIVE_STOPPED;
-    private Spectrometer spectrum;
-    private TimeDomain pausedDisplay;
-    private TimeDomain liveDisplay;
-    private TimeDomain fileDisplay;
+	// Data sources
+	private Transform[] liveDb;
+	private Transform[] fileDb;
+	private Recording fileRecording;
+	private File file;
 
-    private TimeDomain timeDomain;
-    private final float[] transformBuffer = new float[TRANSFORM];
-    private File file;
+	/** live JavaSound input for STANDALONE mode*/
+	private JavaxIn javaxIn;
+	private Registrar zone; // only for embedded mode
+	/** shared audio player (low level) (Jack or JavaSound) */
+	private final PlayAudio out;
+	/** shared generic audio player GUI wrapper */
+	private BoomBox boombox;
 
-    // Controls
-    private JPanel wrap;
-    private JToggleButton liveBtn;
-    private JToggleButton zoneBtn;
-    private JToggleButton fileBtn;
-    private JLabel feedback;
-    /** wrapper used so we can swap feedback <-> JavaxIn/Playa panel */
-    private final JPanel feedbackWrap = new JPanel();
-    /** dynamic box that will hold the current TimeDomain's controls panel */
-    private final Box timeControlsBox = new Box(BoxLayout.X_AXIS);
-    private final Box content = new Box(BoxLayout.Y_AXIS);
+	private final Transformer analyzer = new Transformer(transform -> {
+    	SwingUtilities.invokeLater(() -> {
+    		if (mode == Mode.LIVE_ROLLING)
+    			timeDomain.analyze(transform);
 
-    /** Optional live input helper for standalone mode; only created when STANDALONE==true */
-    private JavaxIn javaxIn;
-    /** Single shared audio player and UI (Playa) */
-    private final JavaxOut out;
-    private final Playa playa;
+    		spectrum.analyze(transform);
+    	});
+    });
 
-    @SuppressWarnings("resource")
-    public static void main(String[] args) {
-        new JudahScope();
-    }
+	// Controls
+	private JToggleButton liveBtn;
+	private JToggleButton stopBtn;
+	private JToggleButton fileBtn;
+	private JLabel feedback;
+	/** wrapper used so we can swap feedback <-> JavaxIn/Playa panel */
+	private final JPanel feedbackWrap = new JPanel();
 
-    /** No-arg constructor: create a STANDALONE full-screen JudahScope with JavaxIn controls. */
-    public JudahScope() {
-        Nimbus.start();
-        this.STANDALONE = true;
 
-        int screenWidth = Math.min(1100, Toolkit.getDefaultToolkit().getScreenSize().width);
-        // Shared player for standalone
-        this.out = new JavaxOut(null);
-        this.playa = new Playa(out);
+	public static void main(String[] args) {
+	    SwingUtilities.invokeLater(() -> {
+	    	@SuppressWarnings("resource")
+			JudahScope scope = new JudahScope();
+	    	// If a file argument was provided, start loading it (async)
+	    	if (args != null && args.length > 0) {
+	    		File argFile = new File(args[0]);
+	    		if (argFile.exists())
+	    			scope.loadFile(argFile);
+	    		else
+	    			System.err.println("Startup file not found: " + args[0]);
+	    	}
+	    });
+	}
 
-        JFrame f = new JFrame("JudahScope");
-        f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        f.add(this);
-        f.setSize(screenWidth, 748);
-        f.setLocation(0, 0);
-        init(screenWidth);
 
-        f.addComponentListener(new ComponentAdapter() {
-            @Override public void componentResized(ComponentEvent e) {
-                    Dimension box = f.getContentPane().getSize();
-                    resized(box.width, box.height);
-                }});
-        f.setVisible(true);
-        setMode(Mode.LIVE_ROLLING);
-    }
+	/** No-arg constructor: create a STANDALONE fullscreen-ish JudahScope with JavaxIn controls. */
+	public JudahScope() {
+	    Nimbus.start();
+	    this.STANDALONE = true;
 
-    /** Normal constructor used by embedding code (non-standalone). */
-    public JudahScope(int w) {
-        this.STANDALONE = false;
-        // Shared player for embedded, too
-        this.out = new JavaxOut(null);
-        this.playa = new Playa(out);
-        init(w);
-    }
+	    // JavaSound player for standalone
+	    this.out = new JavaxOut();
 
-    /** Shared initialization for both constructors. */
-    private void init(int width) {
-        this.w = width;
-        setName("JudahScope");
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> { Services.shutdown();}));
-        Services.add(this);
+	    int screenWidth = Math.min(1100, Toolkit.getDefaultToolkit().getScreenSize().width);
+	    JFrame f = new JFrame(JudahScope.class.getSimpleName());
+	    f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+	    f.add(this);
+	    f.setSize(screenWidth, 748);
+	    f.setLocation(0, 0);
+	    init(screenWidth);
 
-        // Create JavaxIn only for standalone mode (embedded containers will not instantiate it)
-        javaxIn = STANDALONE ? new JavaxIn(this) : null;
-        liveBtn = new JToggleButton("Live", true);
-        zoneBtn = new JToggleButton("Stop", false);
-        fileBtn = new JToggleButton("File", false);
-        ButtonGroup gp = new ButtonGroup();
-        gp.add(liveBtn); gp.add(zoneBtn); gp.add(fileBtn);
-        liveBtn.addActionListener(l -> setMode(Mode.LIVE_ROLLING));
-        zoneBtn.addActionListener(l -> setMode(Mode.LIVE_STOPPED));
-        fileBtn.addActionListener(l -> setMode(Mode.FILE));
+	    f.addComponentListener(new ComponentAdapter() {
+	        @Override public void componentResized(ComponentEvent e) {
+	                Dimension box = f.getContentPane().getSize();
+	                resized(box.width, box.height);
+	            }});
+	    f.setVisible(true);
+	}
 
-        // Initialize displays with initial width
-        pausedDisplay = new TimeDomain(this, w);
-        liveDisplay = new TimeDomain(pausedDisplay, w);
-        timeDomain = pausedDisplay;
-        spectrum = new Spectrometer(new Dimension(w, 300), liveBtn);
-        updateTimeControls(timeDomain);
-        feedback = new JLabel(" (load) ", JLabel.CENTER);
-        // feedback mouse click triggers file load
-        feedback.addMouseListener(new MouseAdapter() {
-            @Override public void mouseClicked(MouseEvent e) { load(); }});
+	/** Normal constructor used by embedding code (non-standalone).
+	 *  Accepts an externally provided PlayAudio (e.g. JACK) and a Registrar.
+	 */
+	public JudahScope(int w, PlayAudio out, Registrar zone) {
+	    this.STANDALONE = false;
+	    // Embedded: use provided player and GUI wrapper
+	    this.out = out;
+	    this.zone = zone;
+	    init(w);
+	}
 
-        // Build menu
-        Box menu = new Box(BoxLayout.X_AXIS);
-        menu.add(Box.createHorizontalStrut(1));
-        menu.add(Gui.box(liveBtn, zoneBtn, fileBtn));
-        feedbackWrap.setLayout(new BoxLayout(feedbackWrap, BoxLayout.X_AXIS));
-        updateFeedbackWrap(); // initial population depending on STANDALONE & mode
-        menu.add(feedbackWrap);
-        menu.add(spectrum.getControls());
-        menu.add(timeControlsBox);
-        menu.add(playa);
-        menu.add(Box.createHorizontalStrut(1));
-        playa.setVisible(false);
+	/** Shared initialization for both constructors. */
+	private void init(int width) {
+	    this.w = width;
+	    setName("JudahScope");
+	    Runtime.getRuntime().addShutdownHook(new Thread(() -> { Services.shutdown();}));
+	    Services.add(this);
 
-        // Build layout
-        wrap = Gui.wrap(timeDomain);
-        content.add(Gui.resize(menu, new Dimension(w, MENU_HEIGHT)));
-        content.add(spectrum);
-        content.add(Box.createVerticalStrut(6));
-        content.add(wrap);
-        content.add(Box.createVerticalGlue());
+	    // Create JavaxIn only for standalone mode
+	    javaxIn = STANDALONE ? new JavaxIn(analyzer) : null;
+	    liveBtn = new JToggleButton("Live", true);
+	    stopBtn = new JToggleButton("Pause", false);
+	    fileBtn = new JToggleButton("File", false);
+	    ButtonGroup gp = new ButtonGroup();
+	    gp.add(liveBtn); gp.add(stopBtn); gp.add(fileBtn);
+	    liveBtn.addActionListener(l -> setMode(Mode.LIVE_ROLLING));
+	    stopBtn.addActionListener(l -> setMode(Mode.LIVE_STOPPED));
+	    fileBtn.addActionListener(l -> {
+	        if (mode == Mode.FILE)
+	            load();               // bring up open dialog when already in FILE
+	        else
+	            setMode(Mode.FILE);   // normal mode switch
+	    });
+	    // Initialize data and displays
+	    liveDb = new Transform[w / 2]; // Initial live buffer
+	    timeDomain = new TimeDomain(this, w, liveDb);
+	    spectrum = new Spectrometer(new Dimension(w, 300), liveBtn);
+	    feedback = new JLabel(" (load) ", JLabel.CENTER);
+	    feedback.addMouseListener(new MouseAdapter() {
+	        @Override public void mouseClicked(MouseEvent e) { load(); }});
+	    boombox = new BoomBox(out, timeDomain, SLIDER);
+	    boombox.setVisible(false);
 
-        setLayout(new GridLayout(1, 1));
-        add(Gui.wrap(content));
-    }
+	    // Build menu
+	    Box menu = new Box(BoxLayout.X_AXIS);
+	    menu.add(Box.createHorizontalStrut(1));
+	    menu.add(Gui.box(liveBtn, stopBtn, fileBtn));
+	    feedbackWrap.setLayout(new BoxLayout(feedbackWrap, BoxLayout.X_AXIS));
+	    updateFeedbackWrap();
+	    menu.add(feedbackWrap);
+	    menu.add(spectrum.getControls());
+	    menu.add(timeDomain.getControls());
+	    menu.add(boombox);
+	    menu.add(Box.createHorizontalStrut(1));
 
-    /** Swap the feedbackWrap contents:
-     *  - STANDALONE & not FILE: JavaxIn devices
-     *  - FILE mode: Playa controls
-     *  - Else: simple feedback label
-     */
-    private void updateFeedbackWrap() {
-        feedbackWrap.removeAll();
-        Component fb;
-        if (STANDALONE && status != Mode.FILE && javaxIn != null) {
-            fb = javaxIn.getDevices();
-        }
-        else {
-            fb = feedback;
-        }
-        feedbackWrap.add(Gui.resize(fb, FEEDBACK));
+	    // Build layout
+	    Box content = new Box(BoxLayout.Y_AXIS);
+	    content.add(Gui.resize(menu, new Dimension(w, MENU_HEIGHT)));
+	    content.add(spectrum);
+	    content.add(Box.createVerticalStrut(6));
+	    content.add(Gui.wrap(timeDomain));
+	    content.add(Box.createVerticalGlue());
 
-        feedbackWrap.revalidate();
-        feedbackWrap.repaint();
-    }
+	    setLayout(new GridLayout(1, 1));
+	    add(Gui.wrap(content));
+	    setMode(Mode.LIVE_ROLLING);
+	}
 
-    /** Swap the controls panel to match the active TimeDomain.  */
-    private void updateTimeControls(TimeDomain td) {
-        timeControlsBox.removeAll();
-        if (td != null) {
-            timeControlsBox.add(td.getControls());
-        }
-        timeControlsBox.revalidate();
-        timeControlsBox.repaint();
-    }
+	private void updateFeedbackWrap() {
+	    feedbackWrap.removeAll();
+	    Component fb = feedback;
+	    if (STANDALONE && mode != Mode.FILE && javaxIn != null)
+	        fb = javaxIn.getDevices();
+	    feedbackWrap.add(Gui.resize(fb, FEEDBACK));
+	    feedbackWrap.revalidate();
+	    feedbackWrap.repaint();
+	}
 
-    @Override
-    public void resized(int width, int height) {
-        w = width;
+	public Mode getMode() {
+	    return mode;
+	}
 
-        // Calculate available height for Spectrometer
-        int spectrometerHeight = height - MENU_HEIGHT - TimeDomain.TOTAL_HEIGHT - VERTICAL_SPACING;
-        spectrometerHeight = Math.max(100, spectrometerHeight); // Minimum height
+	@Override
+	public void resized(int width, int height) {
+	    w = width;
+	    int spectrometerHeight = Math.max(100, height - MENU_HEIGHT - TimeDomain.TOTAL_HEIGHT - VERTICAL_SPACING);
+	    spectrum.resized(w, spectrometerHeight);
+	    timeDomain.resize(w);
+	    Dimension newSize = new Dimension(width, height);
+	    setPreferredSize(newSize);
+	    setSize(newSize);
+	    revalidate();
+	    repaint();
+	}
 
-        // Resize components
-        spectrum.resized(w, spectrometerHeight);
-        timeDomain.resize(w);
+	public void loadFile(File f) {
+        if (f == null) return;
 
-        // Update this panel's size
-        Dimension newSize = new Dimension(width, height);
-        setPreferredSize(newSize);
-        setSize(newSize);
+        // remember file so feedback and setMode can show the correct name
+        this.file = f;
+        if (!Memory.checkFFT(f)) // user cancelled due to not enough memory
+        	return;
 
-        revalidate();
-        repaint();
-    }
-
-    /** load a file off the current thread */
-    public void load() {
-        file = Folders.choose(Folders.getLoops());
-        if (file == null)
-            return;
-        if (!FromDisk.canLoadForScope(file)) {
-            RTLogger.warn(this, "Scope load refused for " + file.getName());
-            Gui.infoBox("Scope load aborted: file too large for memory.\n" + file.getName(), getName());
-            return;
-        }
         Threads.execute(() -> {
-            Recording recording = MP3.load(file);
-            int frames = recording.size() / CHUNKS;
-            Transform[] loaded = new Transform[frames];
-            final float[] transformBuffer = new float[TRANSFORM];
+            fileRecording = MP3.load(f);
+            int frames = fileRecording.size() / WavConstants.CHUNKS;
+            fileDb = new Transform[frames];
             long start = System.currentTimeMillis();
             for (int frame = 0; frame < frames; frame++) {
                 int idx = frame * FFT_SIZE;
-                float[][] snippet = recording.getSamples(idx, FFT_SIZE);
-                System.arraycopy(snippet[0], 0, transformBuffer, 0, FFT_SIZE);
-                fft.forwardTransform(transformBuffer);
-                float[] amplitudes = new float[AMPLITUDES];
-                fft.modulus(transformBuffer, amplitudes);
-                loaded[frame] = new Transform(amplitudes, AudioMetrics.analyze(snippet));
+                float[][] snippet = fileRecording.getSamples(idx, FFT_SIZE);
+                fileDb[frame] = analyzer.analyze(snippet[0], snippet[1]);
             }
             long end = System.currentTimeMillis();
-            System.out.println(file.getName() + " frames: " + frames + " FFT compute millis: " + (end - start));
-            fileDisplay = new TimeDomain(this, w, loaded, recording);
-            install(fileDisplay);
+            System.out.println(f.getName() + " frames: " + frames + " FFT compute millis: " + (end - start));
+            boombox.setRecording(new Asset(f.getName(), f, fileRecording, fileRecording.size() * Constants.bufSize(),
+                    Asset.Category.USER));
 
-            // Attach shared player to this recording and TimeDomain
-            playa.attach(recording, fileDisplay, out);
-            updateFeedbackWrap();
+            SwingUtilities.invokeLater(() -> {
+                // If already viewing a file, refresh the TimeDomain and wiring so the new file
+                // and filename show immediately. Otherwise switch into FILE mode (normal path).
+                if (mode == Mode.FILE) {
+                    // update TimeDomain data and playback wiring in-place
+                    timeDomain.setData(fileDb, fileRecording);
+                    try { out.setPlayed(boombox); } catch (Throwable t) { RTLogger.warn(this, t); }
+                    timeDomain.setPlaya(boombox);
+                    setFeedback();
+                    repaint();
+                } else {
+                    setMode(Mode.FILE);
+                }
+            });
         });
     }
 
-    private void install(TimeDomain time) {
-        timeDomain = time;
-        timeDomain.resize(w); // Ensure it has the current width
-        timeDomain.generate();
-        wrap.removeAll();
-        wrap.add(timeDomain);
-        updateTimeControls(timeDomain);
-        revalidate();
-        repaint();
-    }
 
-    void setFeedback() {
-        switch (status) {
-            case LIVE_ROLLING, LIVE_STOPPED -> feedback.setText(" ");
-            case FILE -> feedback.setText(file == null ? " (load) " : file.getName());
-        }
-        updateFeedbackWrap();
-    }
+	public void load() {
+	    file = Folders.choose(Folders.getLoops());
+	    if (file == null) return;
+	    // delegate to new loader
+	    loadFile(file);
+	}
 
-    @Override
-    public void analyze(float[] left, float[] right) {
-        RMS rms = AudioMetrics.analyze(left);
-        System.arraycopy(left, 0, transformBuffer, 0, FFT_SIZE);
-        fft.forwardTransform(transformBuffer);
-        float[] amplitudes = new float[AMPLITUDES];
-        fft.modulus(transformBuffer, amplitudes);
 
-        Transform data = new Transform(amplitudes, rms);
-        liveDisplay.analyze(data);
-        spectrum.analyze(data);
-    }
+	void setFeedback() {
+	    switch (mode) {
+	        case LIVE_ROLLING, LIVE_STOPPED -> feedback.setText(" ");
+	        case FILE -> feedback.setText(file == null ? " (load) " : file.getName());
+	    }
+	    updateFeedbackWrap();
+	}
 
-    public void click(Transform t) {
-        if (t == null)
-            spectrum.clear();
-        else
-            spectrum.analyze(t);
-    }
+	public void click(Transform t) {
+	    if (t == null)
+	        spectrum.clear();
+	    else
+	        spectrum.analyze(t);
+	}
 
-    /////////////   MODE   //////////////
-    public boolean isActive() {
-        return status == Mode.LIVE_ROLLING;
-    }
+	public boolean isActive() {
+	    return mode == Mode.LIVE_ROLLING;
+	}
 
-    public void setActive(boolean active) {
-        setMode(active ? Mode.LIVE_ROLLING : Mode.LIVE_STOPPED);
-    }
+	public void setActive(boolean active) {
+	    setMode(active ? Mode.LIVE_ROLLING : Mode.LIVE_STOPPED);
+	}
 
-    public void setMode(Mode stat) {
-        if (stat == status)
-            return;
+	public void setMode(Mode newMode) {
+	    if (newMode == mode) return;
 
-        Mode old = status;
-        status = stat;
+	    Mode oldMode = mode;
 
-        // Leaving FILE mode: stop shared player
-        if (status != Mode.FILE) {
-            try { out.play(false); } catch (Throwable ignored) {}
-            playa.setVisible(false);
-        }
+	    // If switching to FILE but no file is loaded yet, start async load and keep current mode.
+	    if (newMode == Mode.FILE && fileDb == null) {
+	        load();
+	        return;
+	    }
 
-        if (status == Mode.LIVE_ROLLING) {
-            // Switching into LIVE_ROLLING: ensure liveDisplay is shown and JavaxIn is (re)connected
-            liveDisplay.fullRange();
-            install(liveDisplay);
-            if (!liveBtn.isSelected())
-                liveBtn.setSelected(true);
+	    // Capture last live head if we're leaving LIVE_ROLLING -> LIVE_STOPPED
+	    int lastLiveHead = -1;
+	    if (oldMode == Mode.LIVE_ROLLING && newMode == Mode.LIVE_STOPPED) {
+	        try {
+	            lastLiveHead = timeDomain.getPositionIndex();
+	        } catch (Throwable ignored) {
+	            lastLiveHead = -1;
+	        }
+	    }
 
-            // Reconnect/start JavaxIn when in standalone mode so the selected input is active
-            if (STANDALONE && javaxIn != null) {
-                try {
-                    // Start will reopen/connect the currently selected device; it's safe to call repeatedly
-                    javaxIn.start();
-                } catch (Throwable t) {
-                    RTLogger.warn(this, t);
-                }
-            }
-        } else {
-            // leaving live rolling mode: stop JavaxIn capture to free device
-            if (old == Mode.LIVE_ROLLING && javaxIn != null) {
-                try {
-                    javaxIn.stop();
-                } catch (Throwable t) {
-                    t.printStackTrace();
-                }
-            }
+	    // Now commit the mode change and perform transitions.
+	    mode = newMode;
 
-            if (status == Mode.LIVE_STOPPED)
-                install(pausedDisplay);
-            else if (fileDisplay == null)
-                load();
-            else
-                install(fileDisplay);
-        }
-        setFeedback();
-        if (status == Mode.FILE)
-            playa.setVisible(true);
-        repaint();
-    }
+	    // Stop player when leaving FILE mode
+	    if (oldMode == Mode.FILE && newMode != Mode.FILE) {
+	        boombox.play(false);
+	        try { out.setPlayed(null); } catch (Throwable t) { RTLogger.warn(this, t); }
+	        timeDomain.setPlaya(null);
+	    }
 
-    @Override
-    public void close()  {
-        if (status == Mode.LIVE_ROLLING)
-            setMode(Mode.LIVE_STOPPED);
-        try { playa.close(); } catch (Throwable ignored) {}
-    }
+	    // Stop live input when leaving LIVE_ROLLING mode
+	    if (oldMode == Mode.LIVE_ROLLING && newMode != Mode.LIVE_ROLLING) {
+	        if (STANDALONE && javaxIn != null) {
+	            try { javaxIn.stop(); } catch (Throwable t) { RTLogger.warn(this, t); }
+	        }
+	        if (!STANDALONE && analyzer != null && zone != null) {
+	            zone.unregisterAnalyzer(analyzer);
+	        }
+	    }
 
-    /** Called by TimeDomain on seek clicks if needed. */
-    public void seekToIndex(int idx) {
-        playa.seekByIndex(idx);
-    }
+	    // --- Configure for new mode ---
+	    switch (newMode) {
+	        case LIVE_ROLLING:
+	            timeDomain.setData(liveDb, null);
+	            timeDomain.fullRange();
+	            if (!liveBtn.isSelected()) liveBtn.setSelected(true);
+
+	            if (STANDALONE && javaxIn != null) {
+	                try { javaxIn.start(); } catch (Throwable t) { RTLogger.warn(this, t); }
+	            }
+	            if (!STANDALONE && analyzer != null && zone != null) {
+	                zone.registerAnalyzer(analyzer);
+	            }
+	            break;
+
+	        case LIVE_STOPPED:
+	            timeDomain.setData(liveDb, null);
+	            if (!stopBtn.isSelected()) stopBtn.setSelected(true);
+	            // restore the last live head position so the stopped view paints that head
+	            if (lastLiveHead >= 0) {
+	                timeDomain.setPositionIndex(lastLiveHead);
+	            }
+	            break;
+
+	        case FILE:
+	            // fileDb must be present here (we returned earlier if it wasn't)
+	            timeDomain.setData(fileDb, fileRecording);
+	            // Wire player callbacks to BoomBox (which forwards setHead into TimeDomain)
+	            try { out.setPlayed(boombox); } catch (Throwable t) { RTLogger.warn(this, t); }
+	            timeDomain.setPlaya(out);
+	            if (!fileBtn.isSelected()) fileBtn.setSelected(true);
+	            break;
+	    }
+
+	    boombox.setVisible(newMode == Mode.FILE);
+	    setFeedback();
+	    repaint();
+	}
+	@Override
+	public void close()  {
+	    if (mode == Mode.LIVE_ROLLING)
+	        setMode(Mode.LIVE_STOPPED);
+	    try { boombox.close(); } catch (Throwable ignored) {}
+	}
+
+	/** Called by TimeDomain on seek clicks if needed. */
+	public void seekToIndex(int idx) {
+	    try {
+	        long sampleFrame = (long) idx * FFT_SIZE;
+	        boombox.setSample(sampleFrame);
+	    } catch (Throwable t) {
+	    	System.err.println("Error seeking to index " + idx);
+	    }
+	}
 }

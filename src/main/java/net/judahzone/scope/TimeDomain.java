@@ -15,12 +15,15 @@ import javax.swing.BoxLayout;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JSlider;
+import javax.swing.SwingUtilities;
 
+import judahzone.api.PlayAudio;
 import judahzone.api.Played;
 import judahzone.api.Transform;
 import judahzone.gui.Gui;
 import judahzone.util.Recording;
 import judahzone.util.Threads;
+import judahzone.util.WavConstants;
 
 public class TimeDomain extends JPanel implements Gui.Mouser, Played {
 
@@ -47,17 +50,17 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
     static final Color GUAGE = Color.DARK_GRAY;
 
     private final JudahScope scope;
-    private final Transform[] db;
+    private Transform[] db;
     private Spectrogram spectro;
     private RMSMeter rms;
     /** Shared Playa reference (for FILE mode), owned by JudahScope */
-    private Playa playa;
+    private PlayAudio playa;
+    private Recording tape;
 
     /** Per-instance controls (RMS gain, zoom). */
     private final JPanel controls = new JPanel();
     private JSlider rmsSlider;
     private JSlider zoomSlider;
-    private final boolean zoomable;
 
     /** Caret position in db indices (not pixels). */
     private int positionIndex;
@@ -76,37 +79,37 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
 
     /** Minimum number of frames visible at maximum zoom. */
     private static final int MIN_VISIBLE_FRAMES = 16;
-    boolean live;
 
-    // Live
-    TimeDomain(TimeDomain source, int width) {
-        this(source.scope, width, false, source.db, null);
-        live = true;
-    }
-
-    // Paused
-    TimeDomain(JudahScope view, int width) {
-        this(view, width, true, new Transform[width / 2], null);
-    }
-
-    // File / zoomable
-    TimeDomain(JudahScope view, int width, Transform[] db, Recording tape) {
-        this(view, width, true, db, tape);
-    }
-
-    private TimeDomain(JudahScope view, int width, boolean zoomable, Transform[] db, Recording tape) {
+    public TimeDomain(JudahScope view, int width, Transform[] initialDb) {
         this.scope = view;
-        this.db = db;
-        this.zoomable = zoomable;
-        endIndex = db.length - 1;
-        if (zoomable) {
-            addMouseListener(this);
-            addMouseMotionListener(this);
-            addMouseWheelListener(this);
-        }
+        this.w = width;
+
+        addMouseListener(this);
+        addMouseMotionListener(this);
+        addMouseWheelListener(this);
+
         initControls();
-        resize(width);
-        fullRange();
+        setData(initialDb, null); // Initial data, no recording
+        resize(width); // Also calls fullRange
+    }
+
+    /**
+     * Swaps the data source for this TimeDomain.
+     * @param db The new Transform database.
+     * @param tape The associated Recording, or null.
+     */
+    public void setData(Transform[] db, Recording tape) {
+        this.db = db;
+        this.tape = tape;
+        this.positionIndex = 0;
+        this.zoomSlider.setEnabled(tape != null); // Enable zoom only for files
+
+        if (rms != null) {
+            rms.setDb(db);
+            spectro.setDb(db);
+        }
+
+        fullRange(); // Resets viewport and regenerates
     }
 
     public JPanel getControls() {
@@ -114,10 +117,8 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
     }
 
     /** JudahScope wires the shared Playa into this TimeDomain when in FILE mode. */
-    public void setPlaya(Playa playa) {
+    public void setPlaya(PlayAudio playa) {
         this.playa = playa;
-        // Controls already built; if needed, you can call this before initControls
-        // or rebuild controls; for now, Playa is not embedded into TimeDomain controls.
     }
 
     private void initControls() {
@@ -130,14 +131,15 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
         controls.add(new JLabel(" RMS "));
         controls.add(Gui.resize(rmsSlider, JudahScope.SLIDER));
 
-        if (zoomable) {
-            zoomSlider = new JSlider(1, 100, 100);
-            zoomSlider.setValue(1);
-            zoomSlider.addChangeListener(e -> setZoomScale(zoomSlider.getValue() * 0.01f));
-            controls.add(Box.createHorizontalStrut(8));
-            controls.add(new JLabel(" Zoom "));
-            controls.add(Gui.resize(zoomSlider, JudahScope.SLIDER));
-        }
+        zoomSlider = new JSlider(1, 100, 1); // Min=1, Max=100, Initial=1 (no zoom)
+        zoomSlider.addChangeListener(e -> {
+            if (!zoomSlider.getValueIsAdjusting()) {
+                setZoomScale(zoomSlider.getValue() / 100f);
+            }
+        });
+        controls.add(Box.createHorizontalStrut(8));
+        controls.add(new JLabel(" Zoom "));
+        controls.add(Gui.resize(zoomSlider, JudahScope.SLIDER));
 
         controls.add(Box.createHorizontalStrut(8));
     }
@@ -147,7 +149,18 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
     }
 
     void fullRange() {
-        setRange(0, db.length - 1);
+        if (db == null || db.length == 0) {
+            setRange(0, 0);
+        } else {
+            setRange(0, db.length - 1);
+        }
+        if (zoomSlider != null) {
+            zoomSlider.setValue(1); // Corresponds to minimal zoom
+        }
+        // Ensure visuals reflect the full-range immediately
+        updateUnitFromViewport();
+        regenerateChildren();
+        repaint();
     }
 
     /** Set absolute index range (inclusive) for viewport, clamp to db size. */
@@ -193,7 +206,7 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
         idx = Math.max(startIndex, Math.min(endIndex, idx));
         positionIndex = idx;
         // For FILE mode, use JudahScope/Playa to seek; live mode just moves caret
-        if (playa != null) {
+        if (playa != null && tape != null) {
             Threads.execute(() -> scope.seekToIndex(positionIndex));
         }
         repaint();
@@ -201,6 +214,27 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
 
     private int caretX() {
         return Math.round((positionIndex - startIndex) * unit);
+    }
+
+    /**
+     * Return the current caret position index (db index).
+     */
+    public int getPositionIndex() {
+        return positionIndex;
+    }
+
+    /**
+     * Set the caret position index (clamped to db bounds) and repaint.
+     * Useful for restoring the live head position when switching modes.
+     */
+    public void setPositionIndex(int idx) {
+        if (db == null || db.length == 0) {
+            positionIndex = 0;
+            repaint();
+            return;
+        }
+        positionIndex = Math.max(0, Math.min(db.length - 1, idx));
+        repaint();
     }
 
     public void analyze(Transform data) {
@@ -261,7 +295,7 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
         int x = caretX();
         g.drawLine(x, 0, x, HEIGHT_DRAWHEAD);
 
-        if (zoomable) {
+        if (tape != null) { // Only draw labels for files
             drawFrameLabels(g);
         }
     }
@@ -300,13 +334,9 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
     }
 
     void resize(int newWidth) {
-        if (rms != null) {
-            rms.close();
-            spectro.close();
-        }
-
         this.w = newWidth;
-        rms = new RMSMeter(new Dimension(w, HEIGHT_RMS), db);
+
+        rms = new RMSMeter(new Dimension(w, HEIGHT_RMS), db, scope);
         spectro = new Spectrogram(new Dimension(w, HEIGHT_SPECTRUM), db);
 
         Dimension sz = new Dimension(w, TOTAL_HEIGHT);
@@ -356,9 +386,11 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
     }
 
     private void setYScaleInternal(float val) {
+        // Apply RMS scaling immediately to RMS meter
         rms.both((int) (val * 100f), 0);
-        if (live)
-            return;
+
+        // Always regenerate visuals and repaint so RMS slider is responsive
+        // in all modes (LIVE_ROLLING, LIVE_STOPPED and FILE).
         regenerateChildren();
         repaint();
     }
@@ -370,10 +402,10 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
     }
 
     private void setZoomScale(float amount) {
-        if (!zoomable || db.length == 0)
+        if (tape == null || db.length == 0)
             return;
 
-        if (amount <= 0f) {
+        if (amount <= 0.01f) { // Use a small threshold for full range
             fullRange();
             return;
         }
@@ -381,7 +413,12 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
         int maxSize = db.length;
         int minSize = Math.min(MIN_VISIBLE_FRAMES, maxSize);
 
-        int newSize = (int) (maxSize - (maxSize - minSize) * amount);
+        // Logarithmic-like scaling for better feel
+        double maxLog = Math.log(maxSize);
+        double minLog = Math.log(minSize);
+        double newSizeLog = minLog + (1.0 - amount) * (maxLog - minLog);
+        int newSize = (int) Math.exp(newSizeLog);
+
         newSize = Math.max(minSize, Math.min(maxSize, newSize));
 
         zoomCenterIndex = positionIndex;
@@ -419,8 +456,8 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
             regenerateChildren();
             repaint();
         } else if (isCtrlPressed) {
-            zoom(zoomable && up);
-            if (zoomable && zoomSlider != null) {
+            if (tape != null) { // Zoom only for files
+                zoom(up);
                 int maxSize = db.length;
                 int minSize = Math.min(MIN_VISIBLE_FRAMES, maxSize);
                 float amount = (maxSize == minSize)
@@ -442,7 +479,7 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
     }
 
     private void scroll(boolean left) {
-        if (db.length == 0 || viewportSize <= 0)
+        if (tape == null || db.length == 0 || viewportSize <= 0)
             return;
         int delta = (left ? -1 : 1) * (int) (0.25f * viewportSize);
         int newStart = startIndex + delta;
@@ -462,7 +499,7 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
     }
 
     private void zoom(boolean zoomIn) {
-        if (!zoomable || db.length == 0)
+        if (tape == null || db.length == 0)
             return;
 
         int length = visibleLength();
@@ -495,13 +532,22 @@ public class TimeDomain extends JPanel implements Gui.Mouser, Played {
         setRange(newStart, newEnd);
     }
 
-    /**Allows external players to move the visual head/caret. */
-    @Override
-    public void setHeadIndex(int idx) {
-        if (db == null || db.length == 0) return;
-        int clamped = Math.max(0, Math.min(db.length - 1, idx));
+	@Override
+	public void setHead(long sample) {
+        if (db == null || db.length == 0 || tape == null)
+        	return;
+
+        // Convert sample frame position to transform db index
+        // Each transform represents FFT_SIZE sample frames
+        int idx = (int) (sample / WavConstants.FFT_SIZE);
+
+        final int clamped = Math.max(0, Math.min(db.length - 1, idx));
+        if (positionIndex == clamped) return;
+
         positionIndex = clamped;
-        scope.click(db[positionIndex]);
+        SwingUtilities.invokeLater(() -> scope.click(db[clamped]));
         repaint();
-    }
+	}
+
+	@Override public void playState() { /* no-op, BoomBox manages play button */ }
 }

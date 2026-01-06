@@ -15,7 +15,7 @@ public abstract class TimeWidget extends BufferedImage {
 
 	protected int w, h;
 	protected final Graphics2D g2d;
-	protected final Transform[] db;
+	protected Transform[] db;
 
 	public TimeWidget(Dimension size, Transform[] db) { // fixed length
 		super(size.width, size.height, BufferedImage.TYPE_INT_ARGB);
@@ -25,6 +25,10 @@ public abstract class TimeWidget extends BufferedImage {
 		g2d = createGraphics();
 		g2d.setBackground(BACKGROUND);
 		g2d.clearRect(0, 0, w, h);
+	}
+
+	public void setDb(Transform[] db) {
+		this.db = db;
 	}
 
 	/**
