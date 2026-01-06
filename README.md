@@ -26,6 +26,8 @@ A lightweight, low-latency spectroscope for the [JudahZone](https://github.com/j
 
 ### Clone and Build
 
+[zone-scope-full.jar](zone-scope-full.jar)
+
 **Recommended**: clone the parent aggregator (builds all modules in one step):
 
 	git clone https://github.com/jeffmasty/meta-zone.git
@@ -43,15 +45,15 @@ Note: If you cd into zone-scope and run mvn package directly, Maven expects the 
 
 ### Run
 
-After building, launch the standalone demo:
+After building, launch the the shaded (fat) JAR:
 
-	java -jar zone-scope/target/zone-scope-0.3-SNAPSHOT.jar
+	java -jar ../zone-scope/target/zone-scope-0.3-SNAPSHOT-shaded.jar
 
-Or use the shaded (fat) JAR:
+Or, with all projects libraries in place, the slim jar:
 
-	java -jar zone-scope/target/zone-scope-0.3-SNAPSHOT-shaded.jar
+	java -jar ../zone-scope/target/zone-scope-0.3-SNAPSHOT.jar
 
-The app opens a Swing window with JavaSound input controls, live spectrogram, RMS meter and spectrometer. 
+The app opens a Swing window with JavaSound input controls, live spectrogram, RMS meter, spectrometer and audio player. 
 
 ---
 
@@ -92,7 +94,6 @@ Managed by the parent `pom.xml`:
 - **`zone-fx`** – audio effects and analysis base classes.
 - **`zone-gui`** – GUI helpers and widgets.
 - **`zone-javax`** – JavaSound input/output helpers (`JavaxIn`, `JavaxOut`).
-- **Lombok** – annotation processing (compile-time, minimal usage).
 
 When building inside `meta-zone`, all versions/repos are inherited from the parent.
 
@@ -100,15 +101,18 @@ When building inside `meta-zone`, all versions/repos are inherited from the pare
 
 ## Runtime Notes (Linux)
 
-- **JACK support** requires a running JACK server (`jackd` or `jackd2`) and native JACK libraries. If JACK is unavailable, the app uses JavaSound (lower latency and fewer features).
 - **File playback** works out-of-the-box via JavaSound; no JACK required.
 - For full JudahZone integration (MIDI routing, FluidSynth, etc.), see the main [JudahZone README](https://github.com/jeffmasty/JudahZone).
+- **JACK support** requires a running JACK server (`jackd` or `jackd2`) and native JACK libraries in embedded mode.  
+- The stand-alone app uses JavaSound (higher latency).
 
 ---
 
 ## Screenshots
 
 ![zone-scope logo](/screen1.png)
+
+---
 
 ![zone-scope logo2](/screen2.png)
 
