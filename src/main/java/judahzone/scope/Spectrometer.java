@@ -34,7 +34,7 @@ import judahzone.util.RTLogger;
  *  - y-scale slider + RMS level-following (height follows absolute gain)
  *  - tilt checkbox compensates higher frequencies by TILT_RANGE_DB
  */
-public class Spectrometer extends JPanel implements Closeable, Floating, Gui.Mouser {
+public class Spectrometer extends JPanel implements Closeable, Floating, Gui.Mouse {
 
     /* Frequency range and display settings
      * TODO user adjustable */

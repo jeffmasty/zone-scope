@@ -23,8 +23,8 @@ import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 
 import judahzone.api.Asset;
+import judahzone.api.FX.Registrar;
 import judahzone.api.PlayAudio;
-import judahzone.api.Registrar;
 import judahzone.api.Transform;
 import judahzone.fx.analysis.Transformer;
 import judahzone.gui.Floating;
@@ -336,7 +336,7 @@ public class JudahScope extends JPanel implements Floating, Closeable {
 	            try { javaxIn.stop(); } catch (Throwable t) { RTLogger.warn(this, t); }
 	        }
 	        if (!STANDALONE && analyzer != null && zone != null) {
-	            zone.unregisterAnalyzer(analyzer);
+	            zone.unregister(analyzer);
 	        }
 	    }
 
@@ -351,7 +351,7 @@ public class JudahScope extends JPanel implements Floating, Closeable {
 	                try { javaxIn.start(); } catch (Throwable t) { RTLogger.warn(this, t); }
 	            }
 	            if (!STANDALONE && analyzer != null && zone != null) {
-	                zone.registerAnalyzer(analyzer);
+	                zone.register(analyzer);
 	            }
 	            break;
 

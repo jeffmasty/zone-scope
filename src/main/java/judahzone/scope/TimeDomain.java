@@ -25,7 +25,7 @@ import judahzone.util.Recording;
 import judahzone.util.Threads;
 import judahzone.util.WavConstants;
 
-public class TimeDomain extends JPanel implements Gui.Mouser, Played {
+public class TimeDomain extends JPanel implements Gui.Mouse, Played {
 
     private enum DragMode { OFF, DRAG, IGNORE }
 
