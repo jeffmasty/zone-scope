@@ -41,7 +41,7 @@ import judahzone.util.Recording;
 import judahzone.util.Services;
 import judahzone.util.Threads;
 import judahzone.util.WavConstants;
-import judahzone.widgets.BoomBox;
+import judahzone.widgets.PlayGui;
 
 /** Provides a Spectrometer, a Spectrogram and RMSmeter, listening to mixer's selected channels
  * (on a circular 20 sec buffer) or analyze an audio file from disk */
@@ -72,7 +72,7 @@ public class JudahScope extends JPanel implements Floating, Closeable {
 	/** shared audio player (low level) (Jack or JavaSound) */
 	private final PlayAudio out;
 	/** shared generic audio player GUI wrapper */
-	private BoomBox boombox;
+	private PlayGui boombox;
 
 	private final Transformer analyzer = new Transformer(transform -> {
     	SwingUtilities.invokeLater(() -> {
@@ -172,7 +172,7 @@ public class JudahScope extends JPanel implements Floating, Closeable {
 	    feedback = new JLabel(" (load) ", JLabel.CENTER);
 	    feedback.addMouseListener(new MouseAdapter() {
 	        @Override public void mouseClicked(MouseEvent e) { load(); }});
-	    boombox = new BoomBox(out, timeDomain, SLIDER);
+	    boombox = new PlayGui(out, timeDomain, SLIDER);
 	    boombox.setVisible(false);
 
 	    // Build menu
