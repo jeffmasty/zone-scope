@@ -6,7 +6,7 @@ import static judahzone.util.AudioMetrics.Y_FACTOR;
 
 import java.awt.Dimension;
 
-import judahzone.api.Transform;
+import judahzone.data.Transform;
 import judahzone.util.AudioMetrics;
 import judahzone.util.Rainbow;
 import judahzone.util.WavConstants;

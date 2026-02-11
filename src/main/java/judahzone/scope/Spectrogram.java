@@ -4,7 +4,7 @@ import java.awt.Color;
 import java.awt.Dimension;
 
 import be.tarsos.dsp.util.PitchConverter;
-import judahzone.api.Transform;
+import judahzone.data.Transform;
 import judahzone.util.Constants;
 import judahzone.util.WavConstants;
 

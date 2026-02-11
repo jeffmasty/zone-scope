@@ -5,7 +5,7 @@ import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 
-import judahzone.api.Transform;
+import judahzone.data.Transform;
 
 /** Display something (spectrum, RMS) in the Time Domain */
 public abstract class TimeWidget extends BufferedImage {

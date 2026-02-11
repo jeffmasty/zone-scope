@@ -22,7 +22,7 @@ import javax.swing.JSlider;
 import javax.swing.JToggleButton;
 import javax.swing.SwingConstants;
 
-import judahzone.api.Transform;
+import judahzone.data.Transform;
 import judahzone.gui.Floating;
 import judahzone.gui.Gui;
 import judahzone.util.Constants;

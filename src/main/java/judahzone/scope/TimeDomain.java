@@ -19,9 +19,9 @@ import javax.swing.SwingUtilities;
 
 import judahzone.api.PlayAudio;
 import judahzone.api.Played;
-import judahzone.api.Transform;
+import judahzone.data.Recording;
+import judahzone.data.Transform;
 import judahzone.gui.Gui;
-import judahzone.util.Recording;
 import judahzone.util.Threads;
 import judahzone.util.WavConstants;
 
